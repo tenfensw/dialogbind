@@ -97,10 +97,10 @@ $dialogbind_dialog_backend = 'xmessage'
 
 if system('command -v zenity > /dev/null 2>&1') then
 	$dialogbind_dialog_backend = 'zenity'
-elsif `uname`.gsub("\n", "") == 'Darwin' then
-	$dialogbind_dialog_backend = 'macos'
 elsif ENV.keys.include?('OS') && ENV['OS'] == 'Windows_NT' then
 	$dialogbind_dialog_backend = 'win32'
+elsif `uname`.gsub("\n", "") == 'Darwin' then
+	$dialogbind_dialog_backend = 'macos'
 end
 
 if ENV.keys.include? 'DIALOGBIND_BACKEND' then
