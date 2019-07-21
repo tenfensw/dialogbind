@@ -5,8 +5,10 @@
 # Copyright (C) Tim K 2018-2019 <timprogrammer@rambler.ru>.
 # Licensed under MIT License.
 
+require 'dl'
+
 $dialogbind_macos_script_cmd = ''
-$dialogbind_version = '0.9.1'
+$dialogbind_version = '0.9.1.1'
 
 def zenity(arg)
 	args_total = ''
@@ -28,6 +30,14 @@ def zenity(arg)
 		args_total += ' '
 	end
 	return system('zenity ' + args_total)
+end
+
+def win32_msgbox(text='', title='', buttons=0)
+	# function based on code from http://rubyonwindows.blogspot.com/2007/06/displaying-messagebox-using-windows-api.html
+	user32_dlopened = DL.dlopen('user32')
+	msgbox = user32['MessageBoxA', 'ILSSI']
+	returnedv, returnedstatus = msgbox.call(0, text, title, buttons)
+	return returnedv
 end
 
 def xmessage(arg, buttons={ 'OK' => 0 }, file=false)
@@ -68,13 +78,15 @@ def macdialog(text, buttons=['OK'], type='dialog', error=false, dryrun=false)
 	return false
 end
 
-$dialogbind_available_backends = [ 'xmessage', 'zenity', 'macos' ]
+$dialogbind_available_backends = [ 'xmessage', 'zenity', 'macos', 'win32' ]
 $dialogbind_dialog_backend = 'xmessage'
 
 if system('command -v zenity > /dev/null 2>&1') then
 	$dialogbind_dialog_backend = 'zenity'
 elsif `uname`.gsub("\n", "") == 'Darwin' then
 	$dialogbind_dialog_backend = 'macos'
+elsif ENV.keys.include?('OS') && ENV['OS'] == 'Windows_NT' then
+	$dialogbind_dialog_backend = 'win32'
 end
 
 if ENV.keys.include? 'DIALOGBIND_BACKEND' then
@@ -91,6 +103,9 @@ def guiputs(text, title='DialogBind')
 		return zenity({ 'info' => nil, 'title' => title, 'text' => text })
 	elsif $dialogbind_dialog_backend == 'macos' then
 		return macdialog(text)
+	elsif $dialogbind_dialog_backend == 'win32' then
+		win32_msgbox(text, title, 0)
+		return true
 	else
 		puts title + ': ' + text
 		return true
@@ -112,6 +127,9 @@ def guiyesno(text, title='DialogBind')
 		if output.split(':')[1].downcase == 'yes' then
 			return true
 		end
+	elsif $dialogbind_dialog_backend == 'win32' then
+		retv_msgbox = win32_msgbox(text, title, 4)
+		return (retv_msgbox == 6)
 	else
 		raise 'The selected backend does not support question message boxes.'
 	end
@@ -125,6 +143,8 @@ def guierror(text, title='DialogBind')
 		return zenity('error' => nil, 'title' => title, 'text' => text)
 	elsif $dialogbind_dialog_backend == 'macos' then
 		return macdialog(text, [ 'OK' ], 'dialog', true)
+	elsif $dialogbind_dialog_backend == 'win32' then
+		return win32_msgbox('Error. ' + text, title, 0)
 	else
 		raise 'The selected backend does not support question message boxes.'
 	end
@@ -154,6 +174,13 @@ def guilicense(file, title='DialogBind')
 		return xmessage(file, { 'Accept' => 0, 'Decline' => 1 }, true)
 	elsif $dialogbind_dialog_backend == 'zenity' then
 		return zenity({ 'text-info' => nil, 'title' => title, 'filename' => file, 'checkbox' => 'I have read and accepted the terms of the license agreement.' })
+	elsif $dialogbind_dialog_backend == 'macos' then
+		macdialog('Right now, the license agreement will be shown in TextEdit. Close TextEdit using Command-Q to continue,', ['OK'])
+		system('open -e "' + file.gsub('"', "\\\"") + '"')
+		return guiyesno('Do you accept the terms of the license agreement?', title)
+	elsif $dialogbind_dialog_backend == 'win32' then
+		retv_msgbox = win32_msgbox("Do you accept the terms of the license agreement below?\n\n" + File.read(file), title, 4)
+		return (retv_msgbox == 6)
 	else
 		raise 'The selected backend does not support license message boxes.'
 		return false
@@ -199,6 +226,9 @@ def guiselect(entries, text='Choose one of the items below:', title='DialogBind'
 			return nil
 		end
 		return output.split(':')[1]
+	else
+		raise 'The selected backend does not support license message boxes.'
+		return false
 	end
 	return nil
 end
