@@ -8,7 +8,7 @@
 require 'fiddle/import'
 
 $dialogbind_macos_script_cmd = ''
-$dialogbind_version = '0.9.1.1'
+$dialogbind_version = '0.9.2'
 
 # Function used internally in DialogBind to run Zenity from Ruby code. Please do not use this function directly as its API and behaviour might change in any release.
 def zenity(arg)

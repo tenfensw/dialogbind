@@ -1,6 +1,6 @@
 # DialogBind
 *Copyright (C) Tim K 2018-2019 <timprogrammer@rambler.ru>. Licensed under MIT License.*
-DialogBind is a library wrapping around message box displaying tools (zenity and xmessage) on Linux and macOS written in Ruby.
+DialogBind is a library wrapping around message box displaying tools (zenity and xmessage) on Linux, macOS and Windows written in Ruby.
 
 ## A simple example
 ```
@@ -25,7 +25,7 @@ And then include it in your Ruby code the following way:
 require 'dialogbind'
 ```
 
-That's it! You can use it from your code, but it will only work on Linux, macOS and FreeBSD. Other platforms are not supported right now.
+That's it! You can use it from your code, but it will only work on Linux, macOS, Windows and FreeBSD. Other platforms are not supported right now.
 
 ## Basic usage
 Currently, the following functions are available:
@@ -37,6 +37,4 @@ Currently, the following functions are available:
 
 The backend to use is determined automatically, though you can always specify it manually by setting the ``DIALOGBIND_BACKEND`` variable. Currently, ``xmessage``, ``macos`` and ``zenity`` are the only backends that are supported.
 
-## Notice
-Please keep in mind that this library was made, because a simple portable message box-based GUI was needed for TXLin Installer and the core functionality was split into a seperate library at the last minute. The API, backends and platform support might change at any minute. It is not recommended that you use this library in large projects. You can safely use it in your automation tools or scripts, though.
 
