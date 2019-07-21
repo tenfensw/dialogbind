@@ -1,9 +1,11 @@
 #!/usr/bin/env ruby
 # DialogBind - a simple library wrapping around message box displaying
-# tools on Linux (xmessage and zenity)
-# 
+# tools on Linux (xmessage and zenity) and macOS
+#
 # Copyright (C) Tim K 2018-2019 <timprogrammer@rambler.ru>.
 # Licensed under MIT License.
+
+$dialogbind_macos_script_cmd = ''
 
 def zenity(arg)
 	args_total = ''
@@ -46,11 +48,34 @@ def xmessage(arg, buttons={ 'OK' => 0 }, file=false)
 	return system(build_cmd)
 end
 
-$dialogbind_available_backends = [ 'xmessage', 'zenity' ]
+def macdialog(text, buttons=['OK'], type='dialog', error=false, dryrun=false)
+	text_fixed = text.gsub("!", "").gsub("'", '').gsub('"', '').gsub('$', '')
+	cmd = "osascript -e 'tell app \"System Events\" to display " + type + ' "' + text_fixed + '"'
+	if type != 'notification' then
+		cmd += ' buttons ' + buttons.to_s.gsub('[', '{').gsub(']', '}')
+	else
+		cmd += ' with title "' + File.basename($0) + '"'
+	end
+	if error then
+		 cmd += ' with icon caution'
+	end
+	cmd += "'"
+	$dialogbind_macos_script_cmd = cmd
+	if dryrun == false then
+		return system(cmd + ' > /dev/null')
+	end
+	return false
+end
+
+$dialogbind_available_backends = [ 'xmessage', 'zenity', 'macos' ]
 $dialogbind_dialog_backend = 'xmessage'
+
 if system('command -v zenity > /dev/null 2>&1') then
 	$dialogbind_dialog_backend = 'zenity'
+elsif `uname`.gsub("\n", "") == 'Darwin' then
+	$dialogbind_dialog_backend = 'macos'
 end
+
 if ENV.keys.include? 'DIALOGBIND_BACKEND' then
 	$dialogbind_dialog_backend = ENV['DIALOGBIND_BACKEND']
 end
@@ -63,6 +88,8 @@ def guiputs(text, title='DialogBind')
 		return xmessage(text, { 'OK' => 0 })
 	elsif $dialogbind_dialog_backend == 'zenity' then
 		return zenity({ 'info' => nil, 'title' => title, 'text' => text })
+	elsif $dialogbind_dialog_backend == 'macos' then
+		return macdialog(text)
 	else
 		puts title + ': ' + text
 		return true
@@ -75,6 +102,15 @@ def guiyesno(text, title='DialogBind')
 		return xmessage(text, { 'Yes' => 0, 'No' => 1})
 	elsif $dialogbind_dialog_backend == 'zenity' then
 		return zenity('question' => nil, 'title' => title, 'text' => text)
+	elsif $dialogbind_dialog_backend == 'macos' then
+		macdialog(text, [ 'Yes', 'No' ], 'dialog', false, true)
+		output = `#{$dialogbind_macos_script_cmd}`.gsub("\n", "")
+		if output == nil || output.include?(':') == false then
+			return false
+		end
+		if output.split(':')[1].downcase == 'yes' then
+			return true
+		end
 	else
 		raise 'The selected backend does not support question message boxes.'
 	end
@@ -86,9 +122,10 @@ def guierror(text, title='DialogBind')
 		return xmessage('ERROR. ' + text, { 'OK' => 0 })
 	elsif $dialogbind_dialog_backend == 'zenity' then
 		return zenity('error' => nil, 'title' => title, 'text' => text)
+	elsif $dialogbind_dialog_backend == 'macos' then
+		return macdialog(text, [ 'OK' ], 'dialog', true)
 	else
-		raise 'The selected backend does not support error message boxes.'
-		return false
+		raise 'The selected backend does not support question message boxes.'
 	end
 	return false
 end
@@ -98,6 +135,8 @@ def guiprogress(text='Please wait...', title='DialogBind')
 		return xmessage(text, { })
 	elsif $dialogbind_dialog_backend == 'zenity' then
 		return zenity({ 'progress' => nil, 'title' => title, 'text' => text, 'no-cancel' => nil, 'percentage' => 2, 'pulsate' => nil })
+	elsif $dialogbind_dialog_backend == 'macos' then
+		return macdialog(text, [], 'notification', false)
 	else
 		raise 'The selected backend does not support progress message boxes.'
 		return false
@@ -152,7 +191,13 @@ def guiselect(entries, text='Choose one of the items below:', title='DialogBind'
 		else
 			return nil
 		end
+	elsif $dialogbind_dialog_backend == 'macos' then
+		macdialog(text, entries, 'dialog', false, true)
+		output = `#{$dialogbind_macos_script_cmd}`.gsub("\n", "")
+		if output == nil || output.include?(':') == false then
+			return nil
+		end
+		return output.split(':')[1]
 	end
 	return nil
 end
-
