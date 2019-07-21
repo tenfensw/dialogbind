@@ -5,11 +5,12 @@
 # Copyright (C) Tim K 2018-2019 <timprogrammer@rambler.ru>.
 # Licensed under MIT License.
 
-require 'dl'
+require 'fiddle/import'
 
 $dialogbind_macos_script_cmd = ''
 $dialogbind_version = '0.9.1.1'
 
+# Function used internally in DialogBind to run Zenity from Ruby code. Please do not use this function directly as its API and behaviour might change in any release.
 def zenity(arg)
 	args_total = ''
 	arg.keys.each do |key|
@@ -32,14 +33,26 @@ def zenity(arg)
 	return system('zenity ' + args_total)
 end
 
-def win32_msgbox(text='', title='', buttons=0)
-	# function based on code from http://rubyonwindows.blogspot.com/2007/06/displaying-messagebox-using-windows-api.html
-	user32_dlopened = DL.dlopen('user32')
-	msgbox = user32['MessageBoxA', 'ILSSI']
-	returnedv, returnedstatus = msgbox.call(0, text, title, buttons)
-	return returnedv
+# Internal module binding Win32 API MessageBox to Ruby. While it can be used directly, it is not recommended to do so to maintain your app's portability.
+module Win32NativeMessageBox
+	# based on https://gist.github.com/Youka/3ebbdfd03454afa7d0c4
+	extend Fiddle::Importer
+
+	dlload 'user32'
+	typealias 'HANDLE', 'void*'
+	typealias 'HWND', 'HANDLE'
+	typealias 'LPCSTR', 'const char*'
+	typealias 'UINT', 'unsigned int'
+
+	extern 'int MessageBoxA(HWND, LPCSTR, LPCSTR, UINT)'
 end
 
+# Function used internally in DialogBind to run Win32 MessageBoxA from Ruby code. Please do not use this function directly as its API and behaviour might change in any release.
+def win32_msgbox(text, title='DialogBind', buttons=0)
+	return Win32NativeMessageBox::MessageBoxA(nil, text, title, buttons)	
+end
+
+# Function used internally in DialogBind to run XMessage from Ruby code. Please do not use this function directly as its API and behaviour might change in any release.
 def xmessage(arg, buttons={ 'OK' => 0 }, file=false)
 	build_cmd = 'xmessage -center -buttons "'
 	first = true
@@ -59,6 +72,7 @@ def xmessage(arg, buttons={ 'OK' => 0 }, file=false)
 	return system(build_cmd)
 end
 
+# Function used internally in DialogBind to run AppleScript ``display dialog`` from Ruby code. Please do not use this function directly as its API and behaviour might change in any release.
 def macdialog(text, buttons=['OK'], type='dialog', error=false, dryrun=false)
 	text_fixed = text.gsub("!", "").gsub("'", '').gsub('"', '').gsub('$', '')
 	cmd = "osascript -e 'tell app \"System Events\" to display " + type + ' "' + text_fixed + '"'
@@ -96,6 +110,11 @@ if $dialogbind_available_backends.include?($dialogbind_dialog_backend) == false 
 	raise 'Dialog backend "' + $dialogbind_dialog_backend + '" is not available. Available frontends: ' + $dialogbind_available_backends.join(', ')
 end
 
+# Shows a simple message box (or information message box when using Zenity backend).
+#
+# @param text [String] the text that should be displayed in a message box
+# @param title [String] an optional parameter specifying the title of the message box. Ignored on macOS.
+# @return [Boolean] true on success, false if something went wrong
 def guiputs(text, title='DialogBind')
 	if $dialogbind_dialog_backend == 'xmessage' then
 		return xmessage(text, { 'OK' => 0 })
@@ -113,6 +132,11 @@ def guiputs(text, title='DialogBind')
 	return false
 end
 
+# Shows a question message box with "Yes" and "No" buttons.
+#
+# @param text [String] the text that should be displayed in a message box
+# @param title [String] an optional parameter specifying the title of the message box. Ignored on macOS.
+# @return [Boolean] true if the user presses yes, false if the user pressed no
 def guiyesno(text, title='DialogBind')
 	if $dialogbind_dialog_backend == 'xmessage' then
 		return xmessage(text, { 'Yes' => 0, 'No' => 1})
@@ -136,6 +160,11 @@ def guiyesno(text, title='DialogBind')
 	return false
 end
 
+# Shows an error message box with only single OK button.
+#
+# @param text [String] the text that should be displayed in a message box
+# @param title [String] an optional parameter specifying the title of the message box. Ignored on macOS.
+# @return [Boolean] true on success, false if something went wrong
 def guierror(text, title='DialogBind')
 	if $dialogbind_dialog_backend == 'xmessage' then
 		return xmessage('ERROR. ' + text, { 'OK' => 0 })
@@ -151,6 +180,12 @@ def guierror(text, title='DialogBind')
 	return false
 end
 
+# Shows either a buttonless message box with the specified text or a progress message box with the specified text. Does not work on Windows.
+# This function is not async, just like all other functions, so you should actually start it in a seperate thread.
+#
+# @param text [String] the text that should be displayed in a message box
+# @param title [String] an optional parameter specifying the title of the message box. Ignored on macOS.
+# @return [Boolean] true on success, false if something went wrong
 def guiprogress(text='Please wait...', title='DialogBind')
 	if $dialogbind_dialog_backend == 'xmessage' then
 		return xmessage(text, { })
@@ -165,6 +200,11 @@ def guiprogress(text='Please wait...', title='DialogBind')
 	return false
 end
 
+# Shows a message box containing the license agreement that is stored in the specified file.
+#
+# @param file [String] the file that contains the licensing terms
+# @param title [String] an optional parameter specifying the title of the message box. Ignored on macOS.
+# @return [Boolean] true if the user accepts the terms of the license agreement or false if not
 def guilicense(file, title='DialogBind')
 	if File.exists?(file) == false then
 		guierror('File "' + file + '" does not exist.', title)
@@ -198,6 +238,12 @@ def entry2buttonshash(entries)
 	return hash
 end
 
+# Shows either a message box with buttons matching the items specified in the array ``entries`` or a list message box.
+#
+# @param entries [Array] an array of strings that should be displayed as list in a message box. More than two items are currently not supported.
+# @param text [String] the text that should be displayed in a message box
+# @param title [String] an optional parameter specifying the title of the message box. Ignored on macOS.
+# @return [String] the selected string or nil on cancel
 def guiselect(entries, text='Choose one of the items below:', title='DialogBind')
 	if entries.length > 2 then
 		raise 'More than 2 entries for guiselect are not supported by xmessage.'
