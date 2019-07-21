@@ -6,6 +6,7 @@
 # Licensed under MIT License.
 
 $dialogbind_macos_script_cmd = ''
+$dialogbind_version = '0.9.1'
 
 def zenity(arg)
 	args_total = ''

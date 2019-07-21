@@ -4,7 +4,7 @@ DialogBind is a library wrapping around message box displaying tools (zenity and
 
 ## A simple example
 ```
-require_relative 'dialogbind'
+require 'dialogbind'
 
 if guiyesno('Would you like me to show you a random number?', 'Message') == false then
 	guierror('You have selected no.')
@@ -15,14 +15,14 @@ end
 This tiny program in Ruby will show a question dialog with yes and no buttons, with title "Message" and text "Would you like me to show you a random number?". That dialog will return either true if yes was clicked, otherwise, it returns false. If false is returned, an error with text "You have selected no." pops up. Otherwise, a random number from 0 to 19 is generated and is displayed in an information message box with title "Your random number". 
 
 ## Installing
-Currently, there is no RubyGems package, so the only way is to bundle it with your application. So you should fetch it to the folder containing the sources of your application, like this:
+Install RubyGem:
 ```
-curl https://gitlab.com/timkoi/dialogbind/raw/master/dialogbind.rb > dialogbind.rb
+sudo gem install dialogbind
 ```
 
-And then include it the following way:
+And then include it in your Ruby code the following way:
 ```
-require_relative 'dialogbind'
+require 'dialogbind'
 ```
 
 That's it! You can use it from your code, but it will only work on Linux, macOS and FreeBSD. Other platforms are not supported right now.
