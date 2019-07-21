@@ -8,7 +8,7 @@
 require 'fiddle/import'
 
 $dialogbind_macos_script_cmd = ''
-$dialogbind_version = '0.9.2'
+$dialogbind_version = '0.9.2.1'
 
 # Function used internally in DialogBind to run Zenity from Ruby code. Please do not use this function directly as its API and behaviour might change in any release.
 def zenity(arg)
@@ -44,12 +44,12 @@ module Win32NativeMessageBox
 	typealias 'LPCSTR', 'const char*'
 	typealias 'UINT', 'unsigned int'
 
-	extern 'int MessageBoxA(HWND, LPCSTR, LPCSTR, UINT)'
+	extern 'int MessageBox(HWND, LPCSTR, LPCSTR, UINT)'
 end
 
 # Function used internally in DialogBind to run Win32 MessageBoxA from Ruby code. Please do not use this function directly as its API and behaviour might change in any release.
 def win32_msgbox(text, title='DialogBind', buttons=0)
-	return Win32NativeMessageBox::MessageBoxA(nil, text, title, buttons)	
+	return Win32NativeMessageBox::MessageBox(nil, text, title, buttons)	
 end
 
 # Function used internally in DialogBind to run XMessage from Ruby code. Please do not use this function directly as its API and behaviour might change in any release.
@@ -152,7 +152,7 @@ def guiyesno(text, title='DialogBind')
 			return true
 		end
 	elsif $dialogbind_dialog_backend == 'win32' then
-		retv_msgbox = win32_msgbox(text, title, 4)
+		retv_msgbox = win32_msgbox(text, title, 36)
 		return (retv_msgbox == 6)
 	else
 		raise 'The selected backend does not support question message boxes.'
@@ -173,7 +173,7 @@ def guierror(text, title='DialogBind')
 	elsif $dialogbind_dialog_backend == 'macos' then
 		return macdialog(text, [ 'OK' ], 'dialog', true)
 	elsif $dialogbind_dialog_backend == 'win32' then
-		return win32_msgbox('Error. ' + text, title, 0)
+		return win32_msgbox(text, title, 16)
 	else
 		raise 'The selected backend does not support question message boxes.'
 	end
@@ -219,7 +219,7 @@ def guilicense(file, title='DialogBind')
 		system('open -e "' + file.gsub('"', "\\\"") + '"')
 		return guiyesno('Do you accept the terms of the license agreement?', title)
 	elsif $dialogbind_dialog_backend == 'win32' then
-		retv_msgbox = win32_msgbox("Do you accept the terms of the license agreement below?\n\n" + File.read(file), title, 4)
+		retv_msgbox = win32_msgbox("Do you accept the terms of the license agreement below?\n\n" + File.read(file), title, 36)
 		return (retv_msgbox == 6)
 	else
 		raise 'The selected backend does not support license message boxes.'

@@ -2,7 +2,7 @@ require 'rubygems'
 
 Gem::Specification.new do |gemdesc|
 	gemdesc.name = 'dialogbind'
-	gemdesc.version = '0.9.2'
+	gemdesc.version = '0.9.2.1'
 	gemdesc.author = [ 'Tim K' ]
 	gemdesc.email = [ 'timprogrammer@rambler.ru' ]
 	gemdesc.date = '2019-07-21'
