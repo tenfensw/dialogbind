@@ -34,22 +34,37 @@ def zenity(arg)
 end
 
 # Internal module binding Win32 API MessageBox to Ruby. While it can be used directly, it is not recommended to do so to maintain your app's portability.
-module Win32NativeMessageBox
+module Win32NativeBindings
 	# based on https://gist.github.com/Youka/3ebbdfd03454afa7d0c4
-	extend Fiddle::Importer
+	if $dialogbind_dialog_backend == 'win32' then
+		extend Fiddle::Importer
 
-	dlload 'user32'
-	typealias 'HANDLE', 'void*'
-	typealias 'HWND', 'HANDLE'
-	typealias 'LPCSTR', 'const char*'
-	typealias 'UINT', 'unsigned int'
+		dlload 'user32'
+		dlload 'winmm'
+		typealias 'HANDLE', 'void*'
+		typealias 'HWND', 'HANDLE'
+		typealias 'LPCSTR', 'const char*'
+		typealias 'UINT', 'unsigned int'
+		typealias 'BOOL', 'int'
+		typealias 'HMODULE', 'void*'
+		typealias 'DWORD', 'unsigned long'
 
-	extern 'int MessageBox(HWND, LPCSTR, LPCSTR, UINT)'
+		extern 'int MessageBox(HWND, LPCSTR, LPCSTR, UINT)'
+		extern 'BOOL PlaySound(LPCTSTR, HMODULE, DWORD)'
+	else
+		def MessageBox(arg1, arg2, arg3, arg4)
+			return
+		end
+
+		def PlaySound(arg1, arg2, arg3)
+			return 1
+		end
+	end
 end
 
 # Function used internally in DialogBind to run Win32 MessageBoxA from Ruby code. Please do not use this function directly as its API and behaviour might change in any release.
 def win32_msgbox(text, title='DialogBind', buttons=0)
-	return Win32NativeMessageBox::MessageBox(nil, text, title, buttons)	
+	return Win32NativeBindings::MessageBox(nil, text, title, buttons)
 end
 
 # Function used internally in DialogBind to run XMessage from Ruby code. Please do not use this function directly as its API and behaviour might change in any release.
@@ -277,4 +292,92 @@ def guiselect(entries, text='Choose one of the items below:', title='DialogBind'
 		return false
 	end
 	return nil
+end
+
+# DialogBindSystemSounds is a module providing default DialogBind sound IDs to functions like guisound.
+module DialogBindSystemSounds
+	None = 0
+	Success = 1
+	Error = 2
+	Attention = 3
+end
+
+def nativesoundplay(sound_path)
+	unix_cmd_optimized_path = sound_path.gsub('"', "\\\"")
+	if $dialogbind_dialog_backend == 'win32' then
+		Win32NativeBindings::PlaySound(sound_path, nil, SND_SYNC)
+	elsif $dialogbind_dialog_backend == 'macos' then
+		system('afplay "' + unix_cmd_optimized_path + '" > /dev/null 2>&1')
+	else
+		if system('command -v play > /dev/null 2>&1') then
+			system('play "' + unix_cmd_optimized_path + '" > /dev/null 2>&1')
+		elsif system('command -v paplay > /dev/null 2>&1') then
+			system('paplay "' + unix_cmd_optimized_path + '" > /dev/null 2>&1')
+		elsif system('command -v canberra-gtk-play > /dev/null 2>&1') then
+			system('canberra-gtk-play -f "' + unix_cmd_optimized_path + '" > /dev/null 2>&1')
+		elsif system('command -v mpv > /dev/null 2>&1') then
+			system('mpv "' + unix_cmd_optimized_path + '" > /dev/null 2>&1')
+		elsif system('command -v mplayer > /dev/null 2>&1') then
+			system('mplayer "' + unix_cmd_optimized_path + '" > /dev/null 2>&1')
+		else
+			system('xdg-open "' + unix_cmd_optimized_path + '"')
+		end
+	end
+end
+
+def linuxsound(sound_v)
+	sound_theme = '/usr/share/sounds/freedesktop/stereo'
+	sound_theme_success = sound_theme + '/complete.oga'
+	sound_theme_error = sound_theme + '/dialog-error.oga'
+	sound_theme_attention = sound_theme + '/window-attention.oga'
+	if File.directory?(sound_theme) == false then
+		return
+	end
+	if sound_v == DialogBindSystemSounds::Success then
+		nativesoundplay(sound_theme_success)
+	elsif sound_v == DialogBindSystemSounds::Error then
+		nativesoundplay(sound_theme_error)
+	else
+		nativesoundplay(sound_theme_attention)
+	end
+end
+
+# Plays the default system sounds.
+#
+# @param sound_v [DialogBindSystemSounds] the sound to play. Available values are DialogBindSystemSounds::Success,
+# DialogBindSystemSounds::Error and DialogBindSystemSounds::Attention. Specifying DialogBindSystemSounds::None will
+# do nothing.
+# @return [Object] nothing
+def guisound(sound_v)
+	if sound_v == DialogBindSystemSounds::None then
+		return
+	end
+	if $dialogbind_dialog_backend != 'macos' && $dialogbind_dialog_backend != 'win32' then
+		linuxsound(sound_v)
+		return
+	end
+	constant_sound_success = '/System/Library/Components/CoreAudio.component/Contents/SharedSupport/SystemSounds/system/burn complete.aif'
+	constant_sound_error = '/System/Library/Sounds/Funk.aiff'
+	constant_sound_attention = '/System/Library/PrivateFrameworks/FindMyDevic.framework/Versions/A/Resources/fmd_sound.aiff'
+	if File.exists?(constant_sound_attention) == false then
+		constant_sound_attention = constant_sound_success
+	end
+	if File.exists?(constant_sound_success) == false then
+		constant_sound_success = constant_sound_error
+	end
+	if $dialogbind_dialog_backend == 'win32' then
+		constant_sound_success = 'c:/Windows/Media/tada.wav'
+		constant_sound_error = 'c:/Windows/Media/Windows Error.wav'
+		if File.exists?(constant_sound_error) == false then
+			constant_sound_error = 'c:/Windows/Media/chord.wav'
+		end
+		constant_sound_attention = 'c:/Windows/Media/chimes.wav'
+	end
+	if sound_v == DialogBindSystemSounds::Success then
+		nativesoundplay(constant_sound_success)
+	elsif sound_v == DialogBindSystemSounds::Error then
+		nativesoundplay(constant_sound_error)
+	else
+		nativesoundplay(constant_sound_attention)
+	end
 end
