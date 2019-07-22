@@ -33,39 +33,6 @@ def zenity(arg)
 	return system('zenity ' + args_total)
 end
 
-# Internal module binding Win32 API MessageBox to Ruby. While it can be used directly, it is not recommended to do so to maintain your app's portability.
-module Win32NativeBindings
-	# based on https://gist.github.com/Youka/3ebbdfd03454afa7d0c4
-	if $dialogbind_dialog_backend == 'win32' then
-		extend Fiddle::Importer
-
-		dlload 'user32'
-		dlload 'winmm'
-		typealias 'HANDLE', 'void*'
-		typealias 'HWND', 'HANDLE'
-		typealias 'LPCSTR', 'const char*'
-		typealias 'UINT', 'unsigned int'
-		typealias 'BOOL', 'int'
-		typealias 'HMODULE', 'void*'
-		typealias 'DWORD', 'unsigned long'
-
-		extern 'int MessageBox(HWND, LPCSTR, LPCSTR, UINT)'
-		extern 'BOOL PlaySound(LPCTSTR, HMODULE, DWORD)'
-	else
-		def MessageBox(arg1, arg2, arg3, arg4)
-			return
-		end
-
-		def PlaySound(arg1, arg2, arg3)
-			return 1
-		end
-	end
-end
-
-# Function used internally in DialogBind to run Win32 MessageBoxA from Ruby code. Please do not use this function directly as its API and behaviour might change in any release.
-def win32_msgbox(text, title='DialogBind', buttons=0)
-	return Win32NativeBindings::MessageBox(nil, text, title, buttons)
-end
 
 # Function used internally in DialogBind to run XMessage from Ruby code. Please do not use this function directly as its API and behaviour might change in any release.
 def xmessage(arg, buttons={ 'OK' => 0 }, file=false)
@@ -114,6 +81,7 @@ if system('command -v zenity > /dev/null 2>&1') then
 	$dialogbind_dialog_backend = 'zenity'
 elsif ENV.keys.include?('OS') && ENV['OS'] == 'Windows_NT' then
 	$dialogbind_dialog_backend = 'win32'
+	require 'win32ole'
 elsif `uname`.gsub("\n", "") == 'Darwin' then
 	$dialogbind_dialog_backend = 'macos'
 end
@@ -123,6 +91,35 @@ if ENV.keys.include? 'DIALOGBIND_BACKEND' then
 end
 if $dialogbind_available_backends.include?($dialogbind_dialog_backend) == false then
 	raise 'Dialog backend "' + $dialogbind_dialog_backend + '" is not available. Available frontends: ' + $dialogbind_available_backends.join(', ')
+end
+
+# Internal module binding Win32 API MessageBox to Ruby. While it can be used directly, it is not recommended to do so to maintain your app's portability.
+module Win32NativeBindings
+	# based on https://gist.github.com/Youka/3ebbdfd03454afa7d0c4
+	if $dialogbind_dialog_backend == 'win32' then
+		extend Fiddle::Importer
+
+		dlload 'user32'
+		typealias 'HANDLE', 'void*'
+		typealias 'HWND', 'HANDLE'
+		typealias 'LPCSTR', 'const char*'
+		typealias 'UINT', 'unsigned int'
+
+		extern 'int MessageBox(HWND, LPCSTR, LPCSTR, UINT)'
+	else
+		def MessageBox(arg1, arg2, arg3, arg4)
+			return
+		end
+
+		def PlaySound(arg1, arg2, arg3)
+			return 1
+		end
+	end
+end
+
+# Function used internally in DialogBind to run Win32 MessageBoxA from Ruby code. Please do not use this function directly as its API and behaviour might change in any release.
+def win32_msgbox(text, title='DialogBind', buttons=0)
+	return Win32NativeBindings.MessageBox(nil, text, title, buttons)
 end
 
 # Shows a simple message box (or information message box when using Zenity backend).
@@ -305,7 +302,8 @@ end
 def nativesoundplay(sound_path)
 	unix_cmd_optimized_path = sound_path.gsub('"', "\\\"")
 	if $dialogbind_dialog_backend == 'win32' then
-		Win32NativeBindings::PlaySound(sound_path, nil, SND_SYNC)
+		player = WIN32OLE.new('WMPlayer.OCX')
+		player.OpenPlayer(sound_path)
 	elsif $dialogbind_dialog_backend == 'macos' then
 		system('afplay "' + unix_cmd_optimized_path + '" > /dev/null 2>&1')
 	else
