@@ -8,7 +8,7 @@
 require 'fiddle/import'
 
 $dialogbind_macos_script_cmd = ''
-$dialogbind_version = '0.9.4'
+$dialogbind_version = '0.9.4.1'
 
 # @!visibility private
 def zenity(arg)
@@ -182,14 +182,14 @@ if $dialogbind_dialog_backend == 'win32' then
 		end
 		File.write(tmpfile_loc, write_out)
 		tmpfile_loc_w = tmpfile_loc.gsub('/', "\\")
-		cmd_out = `cscript //Nologo "#{tmpfile_loc_w}"`.gsub("\r\n", "")
+		cmd_out = `cscript //Nologo "#{tmpfile_loc_w}"`.gsub("\r\n", "\n").gsub("\n", "")
 		File.delete(tmpfile_loc)
 		return cmd_out
 	end
 
 	# @!visibility private
 	def win32_vbinputbox(text)
-		write_out = 'a = inputbox("' + text.gsub('"', '') + '")'
+		write_out = 'a = inputbox("' + text.gsub('"', '').gsub("\r\n", "\n").gsub("\n", "\" + chr(13) + _ \n \"") + '")'
 		write_out += "\r\nWScript.Echo a"
 		return win32_generatevbs(write_out)
 	end
@@ -346,7 +346,7 @@ end
 
 # Shows either a message box with buttons matching the items specified in the array ``entries`` or a list message box.
 #
-# @param entries [Array] an array of strings that should be displayed as list in a message box. More than two items are currently not supported.
+# @param entries [Array] an array of strings that should be displayed as list in a message box.
 # @param text [String] the text that should be displayed in a message box
 # @param title [String] an optional parameter specifying the title of the message box. Ignored on macOS.
 # @return [String] the selected string or nil on cancel
@@ -377,12 +377,28 @@ def guiselect(entries, text='Choose one of the items below:', title='DialogBind'
 			return nil
 		end
 		item_index = File.read('/tmp/kdialog.sock').gsub("\n", "").to_i
+		if item_index > entries.length then
+			return ''
+		end
 		return entries[item_index].clone
 	elsif $dialogbind_dialog_backend == 'macos' then
 		if entries.include? 'false' then
 			raise 'The list of items to present to the user cannot contain the words "true" or "false" without additional punctuation due to limitations of AppleScript that is called from Ruby on macOS to display dialogs.'
 		end
 		return macselect(entries, text)
+	elsif $dialogbind_dialog_backend == 'win32' then
+		combined_msg = text.clone
+		count = 0
+		entries.each do |entry_item|
+			combined_msg += "\r\n" + count.to_s + '. ' + entry_item.to_s
+			count += 1
+		end
+		combined_msg += "\r\n" + " (To select one of the items above, enter the matching number before the dot)"
+		entered_id = win32_vbinputbox(combined_msg).to_i
+		if entered_id > entries.length then
+			return ''
+		end
+		return entries[entered_id].clone
 	else
 		raise 'The selected backend does not support license message boxes.'
 		return false
