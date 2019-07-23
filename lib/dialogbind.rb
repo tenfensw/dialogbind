@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
 # DialogBind - a simple library wrapping around message box displaying
-# tools on Linux (xmessage and zenity) and macOS
+# tools on Linux (zenity and kdialog), macOS and Windows
 #
 # Copyright (C) Tim K 2018-2019 <timprogrammer@rambler.ru>.
 # Licensed under MIT License.
@@ -8,17 +8,18 @@
 require 'fiddle/import'
 
 $dialogbind_macos_script_cmd = ''
-$dialogbind_version = '0.9.3'
+$dialogbind_version = '0.9.4'
 
-# Function used internally in DialogBind to run Zenity from Ruby code. Please do not use this function directly as its API and behaviour might change in any release.
+# @!visibility private
 def zenity(arg)
 	args_total = ''
 	arg.keys.each do |key|
+		key_o = key
 		if key[-1] == '%' then
-			key = key.sub('%', '')
+			key_o = key.gsub('%', '')
 		end
 		if arg[key] == nil then
-			args_total += '--' + key
+			args_total += '--' + key_o
 		elsif arg[key].instance_of? Array then
 			arg[key].each do |nested_key|
 				if nested_key != nil then
@@ -26,35 +27,35 @@ def zenity(arg)
 				end
 			end
 		else
-			args_total += '--' + key + "='" + arg[key].to_s.gsub("'", '"') + "'"
+			args_total += '--' + key_o + "='" + arg[key].to_s.gsub("'", '"') + "'"
 		end
 		args_total += ' '
 	end
 	return system('zenity ' + args_total)
 end
 
-
-# Function used internally in DialogBind to run XMessage from Ruby code. Please do not use this function directly as its API and behaviour might change in any release.
-def xmessage(arg, buttons={ 'OK' => 0 }, file=false)
-	build_cmd = 'xmessage -center -buttons "'
-	first = true
-	buttons.keys.each do |button|
-		if first then
-			first = false
+# @!visibility private
+def kdialog(arg, redirect_output=false)
+	args_total = ''
+	arg.keys.each do |key|
+		if arg[key].instance_of? Array then
+			args_total += '--' + key + ' '
+			arg[key].each do |instance_item|
+				args_total += "'" + instance_item.to_s.gsub("'", '"') + "' "
+			end
+		elsif arg[key] != nil then
+			args_total += '--' + key + " '" + arg[key].to_s.gsub("'", '"') + "' "
 		else
-			build_cmd += ','
+			args_total += key
 		end
-		build_cmd += button.gsub('"', '') + ':' + buttons[button].to_s
 	end
-	build_cmd += '" '
-	if file then
-		build_cmd += '-file '
+	if redirect_output then
+		args_total += ' > /tmp/kdialog.sock 2>/dev/null'
 	end
-	build_cmd += '"' + arg.gsub('"', "'").gsub('!', '') + '"'
-	return system(build_cmd)
+	return system('kdialog ' + args_total)
 end
 
-# Function used internally in DialogBind to run AppleScript ``display dialog`` from Ruby code. Please do not use this function directly as its API and behaviour might change in any release.
+# @!visibility private
 def macdialog(text, buttons=['OK'], type='dialog', error=false, dryrun=false)
 	text_fixed = text.gsub("!", "").gsub("'", '').gsub('"', '').gsub('$', '')
 	cmd = "osascript -e 'tell app \"System Events\" to display " + type + ' "' + text_fixed + '"'
@@ -74,10 +75,58 @@ def macdialog(text, buttons=['OK'], type='dialog', error=false, dryrun=false)
 	return false
 end
 
-$dialogbind_available_backends = [ 'xmessage', 'zenity', 'macos', 'win32' ]
-$dialogbind_dialog_backend = 'xmessage'
+# @!visibility private
+def macopen(text, ftype=[], folder=false)
+	text_fixed = text.gsub("!", "").gsub("'", '').gsub('"', '').gsub('$', '')
+	type = 'file'
+	if folder then
+		type = 'folder'
+	end
+	cmd = "osascript -e 'tell app \"System Events\" to choose " + type + ' with prompt "' + text_fixed + "\""
+	if ftype.length > 0 then
+		cmd += ' of type { '
+		ftype.each do |extension|
+			extension_real = extension.downcase
+			if extension_real.include? '.' then
+				extension_real = extension_real.split('.')[-1]
+			end
+			cmd += '"' + extension_real + '", '
+		end
+		cmd += '"*" }'
+	end
+	cmd += "'"
+	cmd_output = `#{cmd} | cut -d ' ' -f2- | sed 's+:+/+g'`
+	cmd_output.gsub!("\n", "")
+	cmd_output = '/Volumes/' + cmd_output.clone
+	if cmd_output == '/Volumes/' then
+		return ''
+	end
+	return cmd_output
+end
 
-if system('command -v zenity > /dev/null 2>&1') then
+# @!visibility private
+def macselect(items, text)
+	cmd = 'osascript -e \'tell app "System Events" to choose from list ' + items.to_s.gsub('[', '{').gsub(']', '}').gsub("'", '')
+	cmd += ' with prompt "' + text + '"\''
+	cmd_output = `#{cmd}`.gsub("\n", "")
+	if cmd_output == 'false' then
+		return nil
+	end
+	return cmd_output
+end
+
+# @!visibility private
+def macentry(text)
+	cmd = "osascript -e 'display dialog \"" + text.gsub('"', '').gsub("'", '').gsub('!', '') + "\" default answer \"\" with icon note' | cut -d ':' -f3-"
+	return `#{cmd}`.gsub("\n", "")
+end
+
+$dialogbind_available_backends = [ 'cli', 'zenity', 'kdialog', 'macos', 'win32' ]
+$dialogbind_dialog_backend = 'cli'
+
+if system('command -v kdialog > /dev/null 2>&1') && ENV.keys.include?('KDE_SESSION_VERSION') then
+	$dialogbind_dialog_backend = 'kdialog'
+elsif system('command -v zenity > /dev/null 2>&1') then
 	$dialogbind_dialog_backend = 'zenity'
 elsif ENV.keys.include?('OS') && ENV['OS'] == 'Windows_NT' then
 	$dialogbind_dialog_backend = 'win32'
@@ -93,7 +142,7 @@ if $dialogbind_available_backends.include?($dialogbind_dialog_backend) == false 
 	raise 'Dialog backend "' + $dialogbind_dialog_backend + '" is not available. Available frontends: ' + $dialogbind_available_backends.join(', ')
 end
 
-# Internal module binding Win32 API MessageBox to Ruby. While it can be used directly, it is not recommended to do so to maintain your app's portability.
+# @!visibility private
 module Win32NativeBindings
 	# based on https://gist.github.com/Youka/3ebbdfd03454afa7d0c4
 	if $dialogbind_dialog_backend == 'win32' then
@@ -110,16 +159,76 @@ module Win32NativeBindings
 		def MessageBox(arg1, arg2, arg3, arg4)
 			return
 		end
-
-		def PlaySound(arg1, arg2, arg3)
-			return 1
-		end
 	end
 end
 
-# Function used internally in DialogBind to run Win32 MessageBoxA from Ruby code. Please do not use this function directly as its API and behaviour might change in any release.
-def win32_msgbox(text, title='DialogBind', buttons=0)
-	return Win32NativeBindings.MessageBox(nil, text, title, buttons)
+if $dialogbind_dialog_backend == 'win32' then
+	# @!visibility private
+	def win32_msgbox(text, title='DialogBind', buttons=0)
+		return Win32NativeBindings.MessageBox(nil, text, title, buttons)
+	end
+
+	# @!visibility private
+	def win32_activexplay(path)
+		player = WIN32OLE.new('WMPlayer.OCX')
+		player.OpenPlayer(sound_path)
+	end
+
+	# @!visibility private
+	def win32_generatevbs(write_out)
+		tmpfile_loc = ENV['TEMP'].gsub("\\", "/") + '/dialogbind_vbs_ibox' + rand(9999).to_s + '.vbs'
+		if File.exists? tmpfile_loc then
+			File.delete(tmpfile_loc)
+		end
+		File.write(tmpfile_loc, write_out)
+		tmpfile_loc_w = tmpfile_loc.gsub('/', "\\")
+		cmd_out = `cscript //Nologo "#{tmpfile_loc_w}"`.gsub("\r\n", "")
+		File.delete(tmpfile_loc)
+		return cmd_out
+	end
+
+	# @!visibility private
+	def win32_vbinputbox(text)
+		write_out = 'a = inputbox("' + text.gsub('"', '') + '")'
+		write_out += "\r\nWScript.Echo a"
+		return win32_generatevbs(write_out)
+	end
+
+	# @!visibility private
+	def win32_activexopen(filters, title)
+		filters_str = ''
+		filters.each do |filter_pattern|
+			to_append = 'Files matching pattern ' + filter_pattern + '|' + filter_pattern
+			if filters_str == '' then
+				filters_str = to_append
+			else
+				filters_str += '|' + to_append
+			end
+		end
+		generated_vbs = "fso=CreateObject(\"UserAccounts.CommonDialog\")\r\nfso.Filter=\"" + filters_str + "\"\r\n"
+		generated_vbs += "fso.FilterIndex=" + filters.length.to_s + "\r\nif fso.showOpen then\r\nWScript.Echo fso.fileName\r\nend if"
+		return win32_generatevbs(generated_vbs)
+	end
+else
+	# @!visibility private
+	def win32_activexopen(filters, title)
+		return ''
+	end
+
+	# @!visibility private
+	def win32_msgbox(text, title='DialogBind', buttons=0)
+		return -1
+	end
+
+	# @!visibility private
+	def win32_activexplay(path)
+		return
+	end
+
+	# @!visibility private
+	def win32_vbinputbox(text)
+		return ''
+	end
 end
 
 # Shows a simple message box (or information message box when using Zenity backend).
@@ -128,12 +237,12 @@ end
 # @param title [String] an optional parameter specifying the title of the message box. Ignored on macOS.
 # @return [Boolean] true on success, false if something went wrong
 def guiputs(text, title='DialogBind')
-	if $dialogbind_dialog_backend == 'xmessage' then
-		return xmessage(text, { 'OK' => 0 })
-	elsif $dialogbind_dialog_backend == 'zenity' then
+	if $dialogbind_dialog_backend == 'zenity' then
 		return zenity({ 'info' => nil, 'title' => title, 'text' => text })
 	elsif $dialogbind_dialog_backend == 'macos' then
 		return macdialog(text)
+	elsif $dialogbind_dialog_backend == 'kdialog' then
+		return kdialog({ 'title' => title, 'msgbox' => text })
 	elsif $dialogbind_dialog_backend == 'win32' then
 		win32_msgbox(text, title, 0)
 		return true
@@ -150,9 +259,7 @@ end
 # @param title [String] an optional parameter specifying the title of the message box. Ignored on macOS.
 # @return [Boolean] true if the user presses yes, false if the user pressed no
 def guiyesno(text, title='DialogBind')
-	if $dialogbind_dialog_backend == 'xmessage' then
-		return xmessage(text, { 'Yes' => 0, 'No' => 1})
-	elsif $dialogbind_dialog_backend == 'zenity' then
+	if $dialogbind_dialog_backend == 'zenity' then
 		return zenity('question' => nil, 'title' => title, 'text' => text)
 	elsif $dialogbind_dialog_backend == 'macos' then
 		macdialog(text, [ 'Yes', 'No' ], 'dialog', false, true)
@@ -163,6 +270,8 @@ def guiyesno(text, title='DialogBind')
 		if output.split(':')[1].downcase == 'yes' then
 			return true
 		end
+	elsif $dialogbind_dialog_backend == 'kdialog' then
+		return kdialog({ 'title' => title, 'yesno' => text })
 	elsif $dialogbind_dialog_backend == 'win32' then
 		retv_msgbox = win32_msgbox(text, title, 36)
 		return (retv_msgbox == 6)
@@ -178,36 +287,16 @@ end
 # @param title [String] an optional parameter specifying the title of the message box. Ignored on macOS.
 # @return [Boolean] true on success, false if something went wrong
 def guierror(text, title='DialogBind')
-	if $dialogbind_dialog_backend == 'xmessage' then
-		return xmessage('ERROR. ' + text, { 'OK' => 0 })
-	elsif $dialogbind_dialog_backend == 'zenity' then
+	if $dialogbind_dialog_backend == 'zenity' then
 		return zenity('error' => nil, 'title' => title, 'text' => text)
 	elsif $dialogbind_dialog_backend == 'macos' then
 		return macdialog(text, [ 'OK' ], 'dialog', true)
+	elsif $dialogbind_dialog_backend == 'kdialog' then
+		return kdialog({ 'title' => title, 'error' => text })
 	elsif $dialogbind_dialog_backend == 'win32' then
 		return win32_msgbox(text, title, 16)
 	else
 		raise 'The selected backend does not support question message boxes.'
-	end
-	return false
-end
-
-# Shows either a buttonless message box with the specified text or a progress message box with the specified text. Does not work on Windows.
-# This function is not async, just like all other functions, so you should actually start it in a seperate thread.
-#
-# @param text [String] the text that should be displayed in a message box
-# @param title [String] an optional parameter specifying the title of the message box. Ignored on macOS.
-# @return [Boolean] true on success, false if something went wrong
-def guiprogress(text='Please wait...', title='DialogBind')
-	if $dialogbind_dialog_backend == 'xmessage' then
-		return xmessage(text, { })
-	elsif $dialogbind_dialog_backend == 'zenity' then
-		return zenity({ 'progress' => nil, 'title' => title, 'text' => text, 'no-cancel' => nil, 'percentage' => 2, 'pulsate' => nil })
-	elsif $dialogbind_dialog_backend == 'macos' then
-		return macdialog(text, [], 'notification', false)
-	else
-		raise 'The selected backend does not support progress message boxes.'
-		return false
 	end
 	return false
 end
@@ -222,9 +311,7 @@ def guilicense(file, title='DialogBind')
 		guierror('File "' + file + '" does not exist.', title)
 		return false
 	end
-	if $dialogbind_dialog_backend == 'xmessage' then
-		return xmessage(file, { 'Accept' => 0, 'Decline' => 1 }, true)
-	elsif $dialogbind_dialog_backend == 'zenity' then
+	if $dialogbind_dialog_backend == 'zenity' then
 		return zenity({ 'text-info' => nil, 'title' => title, 'filename' => file, 'checkbox' => 'I have read and accepted the terms of the license agreement.' })
 	elsif $dialogbind_dialog_backend == 'macos' then
 		macdialog('Right now, the license agreement will be shown in TextEdit. Close TextEdit using Command-Q to continue,', ['OK'])
@@ -233,6 +320,12 @@ def guilicense(file, title='DialogBind')
 	elsif $dialogbind_dialog_backend == 'win32' then
 		retv_msgbox = win32_msgbox("Do you accept the terms of the license agreement below?\n\n" + File.read(file), title, 36)
 		return (retv_msgbox == 6)
+	elsif $dialogbind_dialog_backend == 'kdialog' then
+		kdialog({ 'textbox' => file, 'title' => title })
+		if kdialog({ 'yesno' => 'Do you accept the terms of the license agreement?', 'title' => title }) then
+			return true
+		end
+		return false
 	else
 		raise 'The selected backend does not support license message boxes.'
 		return false
@@ -240,6 +333,7 @@ def guilicense(file, title='DialogBind')
 	return false
 end
 
+# @!visibility private
 def entry2buttonshash(entries)
 	hash = {}
 	count = 0
@@ -257,33 +351,38 @@ end
 # @param title [String] an optional parameter specifying the title of the message box. Ignored on macOS.
 # @return [String] the selected string or nil on cancel
 def guiselect(entries, text='Choose one of the items below:', title='DialogBind')
-	if entries.length > 2 then
-		raise 'More than 2 entries for guiselect are not supported by xmessage.'
-	end
-	if $dialogbind_dialog_backend == 'xmessage' then
-		if xmessage(text, entry2buttonshash(entries)) then
-			return entries[0]
-		else
-			return entries[1]
-		end
-	elsif $dialogbind_dialog_backend == 'zenity' then
-		array_of_items = [0, entries[0], nil, nil]
-		if entries.length > 1 then
-			array_of_items[2] = 1
-			array_of_items[3] = entries[1]
+	if $dialogbind_dialog_backend == 'zenity' then
+		array_of_items = []
+		item_count_zenity = 0
+		entries.each do |item|
+			array_of_items.push(item_count_zenity)
+			array_of_items.push(item)
+			item_count_zenity += 1
 		end
 		if zenity({'list' => nil, 'radiolist' => nil, 'text' => text, 'print-column' => 'ALL', 'column' => '#', 'column%' => 'Items', '' => array_of_items, ' > /tmp/zenity.sock 2>/dev/null' => nil }) then
 			return File.read('/tmp/zenity.sock').gsub("\n", "")
 		else
 			return nil
 		end
-	elsif $dialogbind_dialog_backend == 'macos' then
-		macdialog(text, entries, 'dialog', false, true)
-		output = `#{$dialogbind_macos_script_cmd}`.gsub("\n", "")
-		if output == nil || output.include?(':') == false then
+	elsif $dialogbind_dialog_backend == 'kdialog' then
+		list_args = [ text ]
+		item_count = 0
+		entries.each do |list_item|
+			list_args.push(item_count)
+			list_args.push(list_item)
+			list_args.push('-')
+			item_count += 1
+		end
+		if kdialog({ 'title' => title, 'radiolist' => list_args,}, true) == false then
 			return nil
 		end
-		return output.split(':')[1]
+		item_index = File.read('/tmp/kdialog.sock').gsub("\n", "").to_i
+		return entries[item_index].clone
+	elsif $dialogbind_dialog_backend == 'macos' then
+		if entries.include? 'false' then
+			raise 'The list of items to present to the user cannot contain the words "true" or "false" without additional punctuation due to limitations of AppleScript that is called from Ruby on macOS to display dialogs.'
+		end
+		return macselect(entries, text)
 	else
 		raise 'The selected backend does not support license message boxes.'
 		return false
@@ -299,11 +398,11 @@ module DialogBindSystemSounds
 	Attention = 3
 end
 
+# @!visibility private
 def nativesoundplay(sound_path)
 	unix_cmd_optimized_path = sound_path.gsub('"', "\\\"")
 	if $dialogbind_dialog_backend == 'win32' then
-		player = WIN32OLE.new('WMPlayer.OCX')
-		player.OpenPlayer(sound_path)
+		win32_activexplay(sound_path)
 	elsif $dialogbind_dialog_backend == 'macos' then
 		system('afplay "' + unix_cmd_optimized_path + '" > /dev/null 2>&1')
 	else
@@ -323,6 +422,7 @@ def nativesoundplay(sound_path)
 	end
 end
 
+# @!visibility private
 def linuxsound(sound_v)
 	sound_theme = '/usr/share/sounds/freedesktop/stereo'
 	sound_theme_success = sound_theme + '/complete.oga'
@@ -378,4 +478,59 @@ def guisound(sound_v)
 	else
 		nativesoundplay(constant_sound_attention)
 	end
+end
+
+# @!visibility private
+def zenityfilter(filter)
+	filter_out = []
+	filter.each do |filter_item|
+		filter_out.append('--file-filter=' + filter_item)
+	end
+	return filter_out
+end
+
+# Shows system-native file selection dialog. Currently does not work on Windows.
+#
+# @param filter [Array] an array of file patterns. Example: [ '*.rb', 'markdown-doc-toprocess*.md' ]
+# @param title [String] an optional parameter specifying the title of the dialog box. Ignored on macOS.
+# @return [String] either an empty string (if the user cancels the dialog) or the native path to the file.
+def guifileselect(filter=[], title='DialogBind')
+	if $dialogbind_dialog_backend == 'macos' then
+		return macopen(title, filter, false)
+	elsif $dialogbind_dialog_backend == 'kdialog' then
+		if kdialog({ 'title' => title, 'getopenfilename' => [] }, true) == false then
+			return ''
+		end
+		return File.read('/tmp/kdialog.sock').gsub("\n", "")
+	elsif $dialogbind_dialog_backend == 'zenity' then
+		zenity({ 'title' => title, 'file-selection' => nil, '%' => zenityfilter(filter), ' > /tmp/zenity.sock 2>/dev/null' => nil })
+		return File.read('/tmp/zenity.sock').gsub("\n", "")
+	else
+		raise 'The selected backend does not support file selection dialog boxes.'
+		return ''
+	end
+	return ''
+end
+
+# Shows an input box with the specified text.
+#
+# @param text [String] the text that should be displayed in an input box
+# @param title [String] an optional parameter specifying the title of the input box. Ignored on macOS and Windows.
+# @return [String] the string that the user has typed in
+def guigets(text='Type something:', title='DialogBind')
+	if $dialogbind_dialog_backend == 'macos' then
+		return macentry(text)
+	elsif $dialogbind_dialog_backend == 'kdialog' then
+		kdialog({ 'title' => title, 'inputbox' => [ text, '' ] }, true)
+		return File.read('/tmp/kdialog.sock').gsub("\n", "")
+	elsif $dialogbind_dialog_backend == 'zenity' then
+		zenity({ 'title' => title, 'entry' => nil, 'text' => text, ' > /tmp/zenity.sock 2>/dev/null' => nil })
+		return File.read('/tmp/zenity.sock').gsub("\n", "")
+	elsif $dialogbind_dialog_backend == 'win32' then
+		return win32_vbinputbox(text)
+	else
+		raise 'The selected backend does not support input boxes.'
+		return ''
+	end
+	return ''
 end
