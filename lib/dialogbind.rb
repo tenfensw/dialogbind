@@ -56,13 +56,13 @@ def kdialog(arg, redirect_output=false)
 end
 
 # @!visibility private
-def macdialog(text, buttons=['OK'], type='dialog', error=false, dryrun=false)
+def macdialog(text, buttons=['OK'], type='dialog', error=false, dryrun=false, notificationtitle='')
 	text_fixed = text.gsub("!", "").gsub("'", '').gsub('"', '').gsub('$', '')
 	cmd = "osascript -e 'tell app \"System Events\" to display " + type + ' "' + text_fixed + '"'
 	if type != 'notification' then
 		cmd += ' buttons ' + buttons.to_s.gsub('[', '{').gsub(']', '}')
 	else
-		cmd += ' with title "' + File.basename($0) + '"'
+		cmd += ' with title "' + notificationtitle.gsub("!", "").gsub("'", '').gsub('"', '').gsub('$', '') + '"'
 	end
 	if error then
 		 cmd += ' with icon caution'
@@ -195,18 +195,11 @@ if $dialogbind_dialog_backend == 'win32' then
 	end
 
 	# @!visibility private
-	def win32_activexopen(filters, title)
-		filters_str = ''
-		filters.each do |filter_pattern|
-			to_append = 'Files matching pattern ' + filter_pattern + '|' + filter_pattern
-			if filters_str == '' then
-				filters_str = to_append
-			else
-				filters_str += '|' + to_append
-			end
-		end
-		generated_vbs = "fso=CreateObject(\"UserAccounts.CommonDialog\")\r\nfso.Filter=\"" + filters_str + "\"\r\n"
-		generated_vbs += "fso.FilterIndex=" + filters.length.to_s + "\r\nif fso.showOpen then\r\nWScript.Echo fso.fileName\r\nend if"
+	def win32_activexopen(title)
+		generated_vbs = 'set ob=CreateObject("Shell.Application")'
+		generated_vbs += "\r\nset fldr=ob.BrowseForFolder(0, \"" + title.gsub("\r\n", "\n").gsub("\n", "").gsub('"', "") + '", &H4000, "C:")'
+		generated_vbs += "\r\nif not fldr is Nothing then"
+		generated_vbs += "\r\nWScript.Echo fldr.Self.Path\r\nend if"
 		return win32_generatevbs(generated_vbs)
 	end
 
@@ -220,7 +213,7 @@ if $dialogbind_dialog_backend == 'win32' then
 	end
 else
 	# @!visibility private
-	def win32_activexopen(filters, title)
+	def win32_activexopen(title)
 		return ''
 	end
 
@@ -434,7 +427,7 @@ def nativesoundplay(sound_path)
 	if $dialogbind_dialog_backend == 'win32' then
 		win32_activexplay(sound_path)
 	elsif $dialogbind_dialog_backend == 'macos' then
-		system('afplay "' + unix_cmd_optimized_path + '" > /dev/null 2>&1')
+		system('afplay "' + unix_cmd_optimized_path + '" > /dev/null 2>&1 &')
 	else
 		if system('command -v play > /dev/null 2>&1') then
 			system('play "' + unix_cmd_optimized_path + '" > /dev/null 2>&1')
@@ -535,6 +528,8 @@ def guifileselect(filter=[], title='DialogBind')
 	elsif $dialogbind_dialog_backend == 'zenity' then
 		zenity({ 'title' => title, 'file-selection' => nil, '%' => zenityfilter(filter), ' > /tmp/zenity.sock 2>/dev/null' => nil })
 		return File.read('/tmp/zenity.sock').gsub("\n", "")
+	elsif $dialogbind_dialog_backend == 'win32' then
+		return win32_activexopen(title)
 	else
 		raise 'The selected backend does not support file selection dialog boxes.'
 		return ''
@@ -586,4 +581,25 @@ def guigets(text='Type something:', title='DialogBind')
 		return ''
 	end
 	return ''
+end
+
+# Shows a notification in system tray or a message box, depending on operating system notifications support.
+#
+# @param text [String] the text that should be displayed in a notification.
+# @param title [String] an optional parameter specifying the title of the notification.
+# @return [Boolean] true on success, false on fail.
+def guinotify(text, title='DialogBind', sound=DialogBindSystemSounds::Success)
+	if $dialogbind_dialog_backend != 'win32' && $dialogbind_dialog_backend != 'kdialog' then
+		guisound(sound)
+	end
+	if $dialogbind_dialog_backend == 'macos' then
+		return macdialog(text, [], 'notification', false, false, title)
+	elsif $dialogbind_dialog_backend == 'kdialog' then
+		return kdialog({ 'title' => title, 'passivepopup' => [ text, 10 ] })
+	elsif $dialogbind_dialog_backend == 'zenity' then
+		return zenity({ 'title' => title, 'notification' => nil, 'text' => text })
+	else
+		return guiputs(text, title)
+	end
+	return false
 end
