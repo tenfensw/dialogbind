@@ -8,7 +8,7 @@
 require 'fiddle/import'
 
 $dialogbind_macos_script_cmd = ''
-$dialogbind_version = '0.9.4.1'
+$dialogbind_version = '0.9.5'
 
 # @!visibility private
 def zenity(arg)
@@ -107,7 +107,7 @@ end
 # @!visibility private
 def macselect(items, text)
 	cmd = 'osascript -e \'tell app "System Events" to choose from list ' + items.to_s.gsub('[', '{').gsub(']', '}').gsub("'", '')
-	cmd += ' with prompt "' + text + '"\''
+	cmd += ' with prompt "' + text.to_s + '"\''
 	cmd_output = `#{cmd}`.gsub("\n", "")
 	if cmd_output == 'false' then
 		return nil
@@ -209,9 +209,23 @@ if $dialogbind_dialog_backend == 'win32' then
 		generated_vbs += "fso.FilterIndex=" + filters.length.to_s + "\r\nif fso.showOpen then\r\nWScript.Echo fso.fileName\r\nend if"
 		return win32_generatevbs(generated_vbs)
 	end
+
+	# @!visibility private
+	def win32_vbbrowseforfolder(title)
+		generated_vbs = 'set ob=CreateObject("Shell.Application")'
+		generated_vbs += "\r\nset fldr=ob.BrowseForFolder(0, \"" + title.gsub("\r\n", "\n").gsub("\n", "").gsub('"', "") + '", 0, "C:")'
+		generated_vbs += "\r\nif not fldr is Nothing then"
+		generated_vbs += "\r\nWScript.Echo fldr.Self.Path\r\nend if"
+		return win32_generatevbs(generated_vbs)
+	end
 else
 	# @!visibility private
 	def win32_activexopen(filters, title)
+		return ''
+	end
+
+	# @!visibility private
+	def win32_vbbrowseforfolder(title)
 		return ''
 	end
 
@@ -508,7 +522,7 @@ end
 # Shows system-native file selection dialog. Currently does not work on Windows.
 #
 # @param filter [Array] an array of file patterns. Example: [ '*.rb', 'markdown-doc-toprocess*.md' ]
-# @param title [String] an optional parameter specifying the title of the dialog box. Ignored on macOS.
+# @param title [String] an optional parameter specifying the title of the dialog box.
 # @return [String] either an empty string (if the user cancels the dialog) or the native path to the file.
 def guifileselect(filter=[], title='DialogBind')
 	if $dialogbind_dialog_backend == 'macos' then
@@ -524,6 +538,29 @@ def guifileselect(filter=[], title='DialogBind')
 	else
 		raise 'The selected backend does not support file selection dialog boxes.'
 		return ''
+	end
+	return ''
+end
+
+# Shows system-native directory selection dialog.
+#
+# @param title [String] an optional parameter specifying the title of the dialog box.
+# @return [String] either an empty string (if the user cancels the dialog) or the native path to the file.
+def guidirectoryselect(title='DialogBind')
+	if $dialogbind_dialog_backend == 'macos' then
+		return macopen(title, [], true)
+	elsif $dialogbind_dialog_backend == 'kdialog' then
+		if kdialog({ 'title' => title, 'getexistingdirectory' => [] }, true) == false then
+			return ''
+		end
+		return File.read('/tmp/kdialog.sock').gsub("\n", "")
+	elsif $dialogbind_dialog_backend == 'zenity' then
+		zenity({ 'title' => title, 'file-selection' => nil, 'directory' => nil, ' > /tmp/zenity.sock 2>/dev/null' => nil })
+		return File.read('/tmp/zenity.sock').gsub("\n", "")
+	elsif $dialogbind_dialog_backend == 'win32' then
+		return win32_vbbrowseforfolder(title).gsub("\\", '/')
+	else
+		raise 'The selected backend does not support directory selection dialog boxes.'
 	end
 	return ''
 end
