@@ -8,7 +8,7 @@
 require 'fiddle/import'
 
 $dialogbind_macos_script_cmd = ''
-$dialogbind_version = '0.9.5'
+$dialogbind_version = '0.9.5.1'
 
 # @!visibility private
 def zenity(arg)

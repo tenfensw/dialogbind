@@ -6,8 +6,8 @@ Gem::Specification.new do |gemdesc|
 	gemdesc.version = $dialogbind_version
 	gemdesc.author = [ 'Tim K' ]
 	gemdesc.email = [ 'timprogrammer@rambler.ru' ]
-	gemdesc.date = '2019-07-23'
-	gemdesc.homepage = 'https://gitlab.com/timkoi/dialogbind'
+	gemdesc.date = '2019-08-14'
+	gemdesc.homepage = 'https://github.com/timkoi/dialogbind'
 	gemdesc.summary = 'DialogBind provides a portable Ruby API for creating simple message box-based interfaces that work on Linux, macOS and Windows.'
 	gemdesc.description = 'DialogBind is a library providing a cross-platform API for creating dialog and message boxes from Ruby code. Docs are available here: https://www.rubydoc.info/gems/dialogbind/'
 	gemdesc.files = [ 'lib/dialogbind.rb' ]
