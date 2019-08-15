@@ -1,0 +1,11 @@
+language: ruby
+rvm:
+ - 2.2.1
+ - 2.3.6
+ - 2.4.6
+ - 2.5.5
+ - 2.6.2
+
+script: 
+ - ruby -c lib/dialogbind.rb
+ - gem build dialogbind.gemspec
